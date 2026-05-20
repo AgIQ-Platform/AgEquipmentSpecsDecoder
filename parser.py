@@ -5,16 +5,23 @@ except ImportError:
     psycopg2 = None
 
 def load_env():
-    if os.path.exists('.env'):
-        with open('.env') as f:
-            for line in f:
-                if '=' in line:
-                    k, v = line.strip().split('=', 1)
-                    os.environ[k] = v
+    try:
+        if os.path.exists('.env'):
+            with open('.env') as f:
+                for line in f:
+                    if '=' in line:
+                        k, v = line.strip().split('=', 1)
+                        os.environ[k] = v
+    except Exception:
+        pass
 
 load_env()
-DATABASE_URL = os.environ.get("DATABASE_URL")
-RENDER_DATABASE_URL = os.environ.get("RENDER_DATABASE_URL")
+try:
+    DATABASE_URL = os.environ.get("DATABASE_URL")
+    RENDER_DATABASE_URL = os.environ.get("RENDER_DATABASE_URL")
+except Exception:
+    DATABASE_URL = None
+    RENDER_DATABASE_URL = None
 
 ISO_YEAR_MAP = {
     'Y': 2000, '1': 2001, '2': 2002, '3': 2003, '4': 2004, '5': 2005, '6': 2006, '7': 2007, '8': 2008, '9': 2009,
