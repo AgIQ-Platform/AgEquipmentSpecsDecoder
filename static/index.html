@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgIQ by DPA Auctions | PIN &amp; Serial Decoder</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Main Style -->
+    <link rel="stylesheet" href="/static/index.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo">
+                <i class="fa-solid fa-tractor logo-icon"></i>
+                <h1>AgIQ <span>by DPA Auctions</span></h1>
+            </div>
+            <p class="subtitle">Built on a handshake. Driven by family. <span class="divider">|</span> PIN &amp; Serial Decoder</p>
+        </header>
+
+        <!-- Main Grid Layout -->
+        <main class="dashboard-grid">
+            
+            <!-- Left Panel: Input & Interactive Exploded View -->
+            <section class="panel glass input-panel">
+                <h2 class="panel-title"><i class="fa-solid fa-magnifying-glass-chart"></i> Search & Analyze</h2>
+                
+                <form id="decode-form" class="search-form">
+                    <div class="input-wrapper">
+                        <input type="text" id="serial-input" placeholder="Enter PIN or Serial Number (e.g. 1LV4052RLFH210246)..." autocomplete="off" required>
+                        <button type="submit" class="btn btn-primary" id="decode-btn">
+                            <span id="btn-text">Decode PIN</span>
+                            <span id="btn-loader" class="hidden"><i class="fa-solid fa-spinner fa-spin"></i></span>
+                        </button>
+                    </div>
+                </form>
+
+                <div class="sample-section">
+                    <span class="sample-label">Quick Samples:</span>
+                    <div class="sample-badges">
+                        <button class="sample-badge" data-serial="1LV4052RLFH210246" title="Deere 17-digit PIN"><i class="fa-solid fa-leaf"></i> JD 17-Char</button>
+                        <button class="sample-badge" data-serial="RW8430P027299" title="Deere 13-digit Serial"><i class="fa-solid fa-leaf"></i> JD 13-Char</button>
+                        <button class="sample-badge" data-serial="35ARLR0010882" title="Case IH 13-digit Serial"><i class="fa-solid fa-circle"></i> Case IH 13-Char</button>
+                        <button class="sample-badge" data-serial="Z7BD03602" title="New Holland 9-digit Serial"><i class="fa-solid fa-wheat-awn"></i> NH 9-Char</button>
+                        <button class="sample-badge" data-serial="PRK06001" title="Case IH AFS Connect 8-Char"><i class="fa-solid fa-circle"></i> Case IH AFS Connect</button>
+                        <button class="sample-badge" data-serial="CAT00D6KCEL700187" title="Caterpillar 17-digit PIN"><i class="fa-solid fa-screwdriver-wrench"></i> CAT 17-Char</button>
+                        <button class="sample-badge" data-serial="AGCM38300GHM09283" title="AGCO 17-digit PIN"><i class="fa-solid fa-tractor"></i> AGCO 17-Char</button>
+                        <button class="sample-badge" data-serial="BL01001" title="Massey Ferguson 2-char Legacy"><i class="fa-solid fa-tractor"></i> MF 2-Char</button>
+                        <button class="sample-badge" data-serial="GE01001" title="Massey Ferguson European flipped"><i class="fa-solid fa-tractor"></i> MF European</button>
+                        <button class="sample-badge" data-serial="4352200F05077" title="Fendt Modern Chassis"><i class="fa-solid fa-tractor"></i> Fendt Modern</button>
+                        <button class="sample-badge" data-serial="76007287" title="Claas 8-Char proprietary"><i class="fa-solid fa-seedling"></i> Claas 8-Char</button>
+                        <button class="sample-badge" data-serial="302338006" title="Kubota 9-Char numeric"><i class="fa-solid fa-tractor"></i> Kubota 9-Char</button>
+                        <button class="sample-badge" data-serial="WAM53224H00C05042" title="Challenger 17-digit PIN"><i class="fa-solid fa-shield-halved"></i> Challenger 17-Char</button>
+                    </div>
+                </div>
+
+                <div id="welcome-message" class="state-view">
+                    <div class="welcome-content">
+                        <i class="fa-solid fa-barcode welcome-icon"></i>
+                        <h3>Ready to Reverse Engineer</h3>
+                        <p>Paste an equipment PIN/Serial number or select one of our preloaded manufacturer samples to dynamically parse character structures and cross-reference sequence databases.</p>
+                    </div>
+                </div>
+
+                <!-- Exploded Block Visualizer -->
+                <div id="visualizer-container" class="state-view hidden">
+                    <h3 class="visualizer-header">PIN Exploded Block View</h3>
+                    <div id="pin-blocks" class="pin-blocks-grid">
+                        <!-- Rendered dynamically -->
+                    </div>
+                    
+                    <div id="block-tooltip" class="block-tooltip card">
+                        <i class="fa-solid fa-circle-info"></i>
+                        <span id="tooltip-text">Hover or tap on any block above to inspect its structural logic and meaning.</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel: Decoded Specs -->
+            <section class="panel glass specs-panel">
+                <h2 class="panel-title"><i class="fa-solid fa-server"></i> Decoded Specifications</h2>
+                
+                <div id="specs-empty" class="state-view">
+                    <div class="empty-content">
+                        <i class="fa-solid fa-clipboard-list empty-icon"></i>
+                        <p>Awaiting decoded response...</p>
+                    </div>
+                </div>
+
+                <div id="specs-content" class="state-view hidden">
+                    <div class="result-badge-container">
+                        <span class="badge" id="make-badge"><i class="fa-solid fa-industry"></i> <span id="spec-make-title">John Deere</span></span>
+                        <span class="badge" id="format-badge"><i class="fa-solid fa-gears"></i> <span id="spec-format">17-digit PIN</span></span>
+                    </div>
+
+                    <div class="specs-grid">
+                        <div class="spec-card">
+                            <span class="spec-label">Manufacturer</span>
+                            <span class="spec-value" id="spec-make">-</span>
+                        </div>
+                        <div class="spec-card">
+                            <span class="spec-label">Model Range</span>
+                            <span class="spec-value" id="spec-model">-</span>
+                        </div>
+                        <div class="spec-card highlighted">
+                            <span class="spec-label">Decoded Year</span>
+                            <span class="spec-value" id="spec-year">-</span>
+                        </div>
+                        <div class="spec-card">
+                            <span class="spec-label">Assembly Factory / Location</span>
+                            <span class="spec-value" id="spec-plant">-</span>
+                        </div>
+                    </div>
+
+                    <div class="card note-card" id="decoding-confidence-card">
+                        <div class="note-icon-wrapper text-green" id="conf-icon-wrapper">
+                            <i class="fa-solid fa-circle-check" id="conf-icon"></i>
+                        </div>
+                        <div class="note-text">
+                            <h4>Database Match</h4>
+                            <p id="spec-conf-desc">Range matched against serial range database index with high confidence.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Bottom Panel: Market Valuations & Similar Sales -->
+            <section class="panel glass valuation-panel full-width">
+                <h2 class="panel-title"><i class="fa-solid fa-chart-line"></i> Historical Market Sales & Valuations</h2>
+                
+                <div id="pricing-empty" class="state-view">
+                    <div class="empty-content text-center">
+                        <i class="fa-solid fa-table-list pricing-icon"></i>
+                        <p>No model currently decoded. Valuations are fetched dynamically matching the decoded make and model keys.</p>
+                    </div>
+                </div>
+
+                <div id="pricing-content" class="state-view hidden">
+                    <div class="pricing-header">
+                        <h3>Valuation Context matching <span id="pricing-model-title">Model</span></h3>
+                        <p>Latest historical transaction results logged in <code>auction_results</code></p>
+                    </div>
+                    <div class="table-container">
+                        <table class="pricing-table">
+                            <thead>
+                                <tr>
+                                    <th>Date Sold</th>
+                                    <th>Model Year</th>
+                                    <th>Serial / PIN</th>
+                                    <th>Auctioneer</th>
+                                    <th>Location</th>
+                                    <th class="text-right">Price (USD)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pricing-rows">
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+            
+        </main>
+        
+        <!-- Footer -->
+        <footer class="app-footer">
+            <p>&copy; 2026 DPA Auctions. All rights reserved. Sandboxed Local Intelligence Portal.</p>
+        </footer>
+    </div>
+
+    <!-- Script -->
+    <script src="/static/app.js"></script>
+</body>
+</html>
