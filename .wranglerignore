@@ -1,0 +1,51 @@
+# Exclude database files
+*.db
+ag_decoder.db
+ag_decoder.db-journal
+
+# Exclude migration SQL and ZIP files
+*.sql
+d1_migration.sql
+*.zip
+d1_migration.zip
+
+# Exclude PDF reference manuals
+*.pdf
+Book1.pdf
+Book2.pdf
+
+# Exclude local configs and temporary files
+.env
+.env*
+cloudflare_tunnel_details.json
+.DS_Store
+
+# Exclude git repository
+.git/
+.gitignore
+
+# Exclude python test and cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+test_*.py
+test_parser.py
+test_waterloo_logic.py
+test_query.py
+test_dns.py
+test_caterpillar_range.py
+check_*.py
+inspect_*.py
+dump_*.py
+export_*.py
+generate_*.py
+import_*.py
+extract_*.py
+spike_db.py
+configure_dns.py
+ocr_*.swift
+search_pdf.swift
+requirements-local.txt
+static/

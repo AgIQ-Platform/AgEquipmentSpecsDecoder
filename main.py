@@ -34,7 +34,30 @@ class Default(WorkerEntrypoint):
         except Exception as e:
             import traceback
             error_details = {
-                "error": "Unhandled Exception in Worker",
+                "error": "Unhandled Exception in Worker fetch",
+                "message": str(e),
+                "traceback": traceback.format_exc()
+            }
+            return Response(
+                json.dumps(error_details),
+                status=500,
+                headers={
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type"
+                }
+            )
+
+    async def on_fetch(self, request, env=None):
+        try:
+            if env is not None:
+                self.env = env
+            return await self._handle_fetch(request)
+        except Exception as e:
+            import traceback
+            error_details = {
+                "error": "Unhandled Exception in Worker on_fetch",
                 "message": str(e),
                 "traceback": traceback.format_exc()
             }
@@ -317,5 +340,31 @@ class Default(WorkerEntrypoint):
             headers={
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*"
+            }
+        )
+
+async def on_fetch(request, env):
+    try:
+        try:
+            worker = Default(env)
+        except Exception:
+            worker = Default()
+            worker.env = env
+        return await worker._handle_fetch(request)
+    except Exception as e:
+        import traceback
+        error_details = {
+            "error": "Unhandled Exception in module-level on_fetch",
+            "message": str(e),
+            "traceback": traceback.format_exc()
+        }
+        return Response(
+            json.dumps(error_details),
+            status=500,
+            headers={
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type"
             }
         )

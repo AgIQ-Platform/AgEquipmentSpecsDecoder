@@ -3,7 +3,26 @@ main = "main.py"
 compatibility_date = "2024-05-02"
 compatibility_flags = ["python_workers"]
 
+[python_modules]
+excludes = [
+  "**/*.db",
+  "**/*.sql",
+  "**/*.zip",
+  "**/*.pdf",
+  "d1_migration.sql",
+  "ag_decoder.db",
+  "Book1.pdf",
+  "Book2.pdf",
+  "d1_migration.zip",
+  "static/**",
+  "configure_dns.py",
+  "setup_cloudflare.py",
+  "generate_d1_db.py",
+  "setup_local_db.py",
+  "import_local_json_ranges.py"
+]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "ag-decoder-db"
-database_id = "50c2630c-0b2a-c308-a672-a1104f51c6f2" # Placeholder/User D1 Database UUID
+database_id = "5f77db29-a6d3-423d-a3f4-126fac38f1b2"
