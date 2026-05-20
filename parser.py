@@ -1,5 +1,8 @@
 import os
-import psycopg2
+try:
+    import psycopg2
+except ImportError:
+    psycopg2 = None
 
 def load_env():
     if os.path.exists('.env'):
@@ -57,12 +60,16 @@ CNH_PLANT_MAP = {
 }
 
 def get_db_connection():
+    if psycopg2 is None:
+        raise RuntimeError("psycopg2 is not installed/loaded in this environment.")
     db_url = DATABASE_URL or RENDER_DATABASE_URL
     if not db_url:
         raise ValueError("Neither DATABASE_URL nor RENDER_DATABASE_URL found in environment.")
     return psycopg2.connect(db_url)
 
 def get_remote_db_connection():
+    if psycopg2 is None:
+        raise RuntimeError("psycopg2 is not installed/loaded in this environment.")
     if not RENDER_DATABASE_URL:
         return get_db_connection()
     return psycopg2.connect(RENDER_DATABASE_URL)
@@ -267,7 +274,7 @@ def extract_seq_num(val):
             return int(seq_str)
     return None
 
-def decode_john_deere(serial, range_match=None):
+def decode_john_deere(serial, range_match=None, wmc_info=None, jd_seq_ranges=None, pre_resolved=False):
     import re
     serial_clean = serial.strip().upper()
     length = len(serial_clean)
@@ -291,8 +298,18 @@ def decode_john_deere(serial, range_match=None):
         plant_code = serial_clean[10]
         seq_part = serial_clean[11:17]
         
-        wmc_info = lookup_wmc_code(wmc)
-        wmc_desc = f"World Manufacturer Code: {wmc_info['company']} ({wmc_info['country']})" if wmc_info else "World Manufacturer Code (Deere)"
+        wmc_info_dict = None
+        if wmc_info:
+            if isinstance(wmc_info, dict):
+                if wmc in wmc_info:
+                    wmc_info_dict = wmc_info[wmc]
+                elif "company" in wmc_info:
+                    wmc_info_dict = wmc_info
+        
+        if not wmc_info_dict and not pre_resolved:
+            wmc_info_dict = lookup_wmc_code(wmc)
+            
+        wmc_desc = f"World Manufacturer Code: {wmc_info_dict['company']} ({wmc_info_dict['country']})" if wmc_info_dict else "World Manufacturer Code (Deere)"
         
         model_clean = model_part.lstrip('0')
         translated_model = model_clean
@@ -345,19 +362,26 @@ def decode_john_deere(serial, range_match=None):
         # Look up sequence-based year range check if we have a translated_model_key
         is_seq_determined = False
         if translated_model_key and seq_part.isdigit():
-            try:
-                conn = get_db_connection()
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT year, serial_start, confidence 
-                    FROM serial_number_ranges 
-                    WHERE make_model_key = %s 
-                    ORDER BY serial_start;
-                """, (translated_model_key,))
-                ranges = cur.fetchall()
-                cur.close()
-                conn.close()
-                
+            ranges = None
+            if jd_seq_ranges is not None:
+                ranges = jd_seq_ranges
+            elif not pre_resolved:
+                try:
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT year, serial_start, confidence 
+                        FROM serial_number_ranges 
+                        WHERE make_model_key = %s 
+                        ORDER BY serial_start;
+                    """, (translated_model_key,))
+                    ranges = cur.fetchall()
+                    cur.close()
+                    conn.close()
+                except Exception as e:
+                    print(f"Error looking up sequence year: {e}")
+            
+            if ranges:
                 best_year = None
                 best_start = None
                 for yr, start_val, conf in ranges:
@@ -370,8 +394,6 @@ def decode_john_deere(serial, range_match=None):
                 if best_year:
                     year_val = best_year
                     is_seq_determined = True
-            except Exception as e:
-                print(f"Error looking up sequence year: {e}")
         
         # Sequence-based year override for John Deere 6-series tractors
         # (e.g. 6110M, 6120M, 6130M, 6R130, 6R140, etc.)
@@ -431,7 +453,7 @@ def decode_john_deere(serial, range_match=None):
         
     return result
 
-def decode_cnh(serial, make_name="Case IH", make_key="case-ih", range_match=None):
+def decode_cnh(serial, make_name="Case IH", make_key="case-ih", range_match=None, wmc_info=None, pre_resolved=False):
     serial_clean = serial.strip().upper()
     length = len(serial_clean)
     
@@ -536,8 +558,18 @@ def decode_cnh(serial, make_name="Case IH", make_key="case-ih", range_match=None
         plant_code = serial_clean[10]
         seq_part = serial_clean[11:17]
         
-        wmc_info = lookup_wmc_code(wmc)
-        wmc_desc = f"World Manufacturer Code: {wmc_info['company']} ({wmc_info['country']})" if wmc_info else "World Manufacturer Code (CNH)"
+        wmc_info_dict = None
+        if wmc_info:
+            if isinstance(wmc_info, dict):
+                if wmc in wmc_info:
+                    wmc_info_dict = wmc_info[wmc]
+                elif "company" in wmc_info:
+                    wmc_info_dict = wmc_info
+        
+        if not wmc_info_dict and not pre_resolved:
+            wmc_info_dict = lookup_wmc_code(wmc)
+            
+        wmc_desc = f"World Manufacturer Code: {wmc_info_dict['company']} ({wmc_info_dict['country']})" if wmc_info_dict else "World Manufacturer Code (CNH)"
         
         # Extract CNH model name if possible
         model_name = model_part
@@ -625,7 +657,7 @@ def decode_caterpillar(serial, range_match=None):
         })
     return result
 
-def decode_massey_ferguson(serial, range_match=None):
+def decode_massey_ferguson(serial, range_match=None, wmc_info=None, pre_resolved=False):
     serial_clean = serial.strip().upper()
     length = len(serial_clean)
     
@@ -649,8 +681,17 @@ def decode_massey_ferguson(serial, range_match=None):
         plant_code = serial_clean[10]
         seq_part = serial_clean[11:17]
         
-        wmc_info = lookup_wmc_code(wmc)
-        wmc_desc = f"World Manufacturer Code: {wmc_info['company']} ({wmc_info['country']})" if wmc_info else "World Manufacturer Code (AGCO)"
+        wmc_info_dict = None
+        if wmc_info:
+            if isinstance(wmc_info, dict):
+                if wmc in wmc_info:
+                    wmc_info_dict = wmc_info[wmc]
+                elif "company" in wmc_info:
+                    wmc_info_dict = wmc_info
+        
+        if not wmc_info_dict and not pre_resolved:
+            wmc_info_dict = lookup_wmc_code(wmc)
+        wmc_desc = f"World Manufacturer Code: {wmc_info_dict['company']} ({wmc_info_dict['country']})" if wmc_info_dict else "World Manufacturer Code (AGCO)"
         
         year_val = ISO_YEAR_MAP.get(year_code)
         year_desc = f"Model Year: {year_val}" if year_val else f"Year Code: {year_code}"
@@ -762,16 +803,16 @@ def decode_massey_ferguson(serial, range_match=None):
         
     return result
 
-def decode_agco(serial, make_name="AGCO", make_key="agco", range_match=None):
+def decode_agco(serial, make_name="AGCO", make_key="agco", range_match=None, wmc_info=None, pre_resolved=False):
     serial_clean = serial.strip().upper()
-    result = decode_massey_ferguson(serial_clean, range_match)
+    result = decode_massey_ferguson(serial_clean, range_match, wmc_info=wmc_info, pre_resolved=pre_resolved)
     result.update({
         "make": make_name,
         "make_key": make_key,
     })
     return result
 
-def decode_fendt(serial, range_match=None):
+def decode_fendt(serial, range_match=None, wmc_info=None, pre_resolved=False):
     serial_clean = serial.strip().upper()
     length = len(serial_clean)
     
@@ -795,8 +836,17 @@ def decode_fendt(serial, range_match=None):
         plant_code = serial_clean[10]
         seq_part = serial_clean[11:17]
         
-        wmc_info = lookup_wmc_code(wmc)
-        wmc_desc = f"World Manufacturer Code: {wmc_info['company']} ({wmc_info['country']})" if wmc_info else "World Manufacturer Code (AGCO)"
+        wmc_info_dict = None
+        if wmc_info:
+            if isinstance(wmc_info, dict):
+                if wmc in wmc_info:
+                    wmc_info_dict = wmc_info[wmc]
+                elif "company" in wmc_info:
+                    wmc_info_dict = wmc_info
+        
+        if not wmc_info_dict and not pre_resolved:
+            wmc_info_dict = lookup_wmc_code(wmc)
+        wmc_desc = f"World Manufacturer Code: {wmc_info_dict['company']} ({wmc_info_dict['country']})" if wmc_info_dict else "World Manufacturer Code (AGCO)"
         
         year_val = ISO_YEAR_MAP.get(year_code)
         year_desc = f"Model Year: {year_val}" if year_val else f"Year Code: {year_code}"
@@ -891,7 +941,7 @@ def decode_fendt(serial, range_match=None):
         
     return result
 
-def decode_challenger(serial, range_match=None):
+def decode_challenger(serial, range_match=None, wmc_info=None, pre_resolved=False):
     serial_clean = serial.strip().upper()
     length = len(serial_clean)
     
@@ -935,8 +985,17 @@ def decode_challenger(serial, range_match=None):
             plant_code = serial_clean[10]
             seq_part = serial_clean[11:17]
             
-            wmc_info = lookup_wmc_code(wmc)
-            wmc_desc = f"World Manufacturer Code: {wmc_info['company']} ({wmc_info['country']})" if wmc_info else "World Manufacturer Code (AGCO)"
+            wmc_info_dict = None
+            if wmc_info:
+                if isinstance(wmc_info, dict):
+                    if wmc in wmc_info:
+                        wmc_info_dict = wmc_info[wmc]
+                    elif "company" in wmc_info:
+                        wmc_info_dict = wmc_info
+            
+            if not wmc_info_dict and not pre_resolved:
+                wmc_info_dict = lookup_wmc_code(wmc)
+            wmc_desc = f"World Manufacturer Code: {wmc_info_dict['company']} ({wmc_info_dict['country']})" if wmc_info_dict else "World Manufacturer Code (AGCO)"
             
             year_val = ISO_YEAR_MAP.get(year_code)
             year_desc = f"Model Year: {year_val}" if year_val else f"Year Code: {year_code}"
@@ -1010,7 +1069,7 @@ def decode_challenger(serial, range_match=None):
         
     return result
 
-def decode_claas(serial, range_match=None):
+def decode_claas(serial, range_match=None, wmc_info=None, pre_resolved=False):
     serial_clean = serial.strip().upper()
     length = len(serial_clean)
     
@@ -1051,8 +1110,18 @@ def decode_claas(serial, range_match=None):
                 year_code = serial_clean[9]
                 plant_code = serial_clean[10]
                 seq_part = serial_clean[11:17]
-                wmc_info = lookup_wmc_code(wmc)
-                wmc_desc = f"World Manufacturer Code: {wmc_info['company']} ({wmc_info['country']})" if wmc_info else "World Manufacturer Code (Claas)"
+                
+                wmc_info_dict = None
+                if wmc_info:
+                    if isinstance(wmc_info, dict):
+                        if wmc in wmc_info:
+                            wmc_info_dict = wmc_info[wmc]
+                        elif "company" in wmc_info:
+                            wmc_info_dict = wmc_info
+                
+                if not wmc_info_dict and not pre_resolved:
+                    wmc_info_dict = lookup_wmc_code(wmc)
+                wmc_desc = f"World Manufacturer Code: {wmc_info_dict['company']} ({wmc_info_dict['country']})" if wmc_info_dict else "World Manufacturer Code (Claas)"
                 
                 year_val = ISO_YEAR_MAP.get(year_code)
                 year_desc = f"Model Year: {year_val}" if year_val else f"Year Code: {year_code}"
@@ -1126,7 +1195,7 @@ def decode_claas(serial, range_match=None):
         
     return result
 
-def decode_kubota(serial, range_match=None):
+def decode_kubota(serial, range_match=None, wmc_info=None, pre_resolved=False):
     serial_clean = serial.strip().upper()
     length = len(serial_clean)
     
@@ -1151,8 +1220,17 @@ def decode_kubota(serial, range_match=None):
         month_code = serial_clean[11]
         seq_part = serial_clean[12:17]
         
-        wmc_info = lookup_wmc_code(wmc)
-        wmc_desc = f"World Manufacturer Code: {wmc_info['company']} ({wmc_info['country']})" if wmc_info else "World Manufacturer Code (Kubota)"
+        wmc_info_dict = None
+        if wmc_info:
+            if isinstance(wmc_info, dict):
+                if wmc in wmc_info:
+                    wmc_info_dict = wmc_info[wmc]
+                elif "company" in wmc_info:
+                    wmc_info_dict = wmc_info
+        
+        if not wmc_info_dict and not pre_resolved:
+            wmc_info_dict = lookup_wmc_code(wmc)
+        wmc_desc = f"World Manufacturer Code: {wmc_info_dict['company']} ({wmc_info_dict['country']})" if wmc_info_dict else "World Manufacturer Code (Kubota)"
         
         year_val = ISO_YEAR_MAP.get(year_code)
         year_desc = f"Model Year: {year_val}" if year_val else f"Year Code: {year_code}"
@@ -1221,14 +1299,14 @@ def models_compatible(m1, m2):
         return True
     return False
 
-def decode_serial(serial):
+def decode_serial(serial, db_match=None, wmc_info=None, similar_sales=None, jd_seq_ranges=None, pre_resolved=False):
     if not serial:
         return {"error": "Serial number is empty"}
         
     serial_clean = serial.strip().upper()
     
     # 1. Run database-wide closest range check FIRST
-    range_match = lookup_db_range(serial_clean)
+    range_match = db_match if pre_resolved else lookup_db_range(serial_clean)
     
     # 2. Extract Make and Model from DB match if successful
     make_key = None
@@ -1291,35 +1369,46 @@ def decode_serial(serial):
         else:
             # Check dynamic WMC lookup
             if len(serial_clean) >= 3:
-                wmc_info = lookup_wmc_code(serial_clean[0:3])
+                wmc_info_res = None
                 if wmc_info:
-                    make_key = wmc_info["make_key"]
+                    wmc_code = serial_clean[0:3]
+                    if isinstance(wmc_info, dict):
+                        if wmc_code in wmc_info:
+                            wmc_info_res = wmc_info[wmc_code]
+                        elif "company" in wmc_info:
+                            wmc_info_res = wmc_info
+                
+                if not wmc_info_res and not pre_resolved:
+                    wmc_info_res = lookup_wmc_code(serial_clean[0:3])
+                    
+                if wmc_info_res:
+                    make_key = wmc_info_res["make_key"]
                     
     # 4. Decode using specified brand coordinator
     if make_key == "john-deere":
-        res = decode_john_deere(serial_clean, range_match)
+        res = decode_john_deere(serial_clean, range_match, wmc_info=wmc_info, jd_seq_ranges=jd_seq_ranges, pre_resolved=pre_resolved)
     elif make_key == "case-ih":
-        res = decode_cnh(serial_clean, make_name="Case IH", make_key="case-ih", range_match=range_match)
+        res = decode_cnh(serial_clean, make_name="Case IH", make_key="case-ih", range_match=range_match, wmc_info=wmc_info, pre_resolved=pre_resolved)
     elif make_key == "new-holland":
-        res = decode_cnh(serial_clean, make_name="New Holland", make_key="new-holland", range_match=range_match)
+        res = decode_cnh(serial_clean, make_name="New Holland", make_key="new-holland", range_match=range_match, wmc_info=wmc_info, pre_resolved=pre_resolved)
     elif make_key == "caterpillar":
         res = decode_caterpillar(serial_clean, range_match)
     elif make_key == "massey-ferguson":
-        res = decode_massey_ferguson(serial_clean, range_match)
+        res = decode_massey_ferguson(serial_clean, range_match, wmc_info=wmc_info, pre_resolved=pre_resolved)
     elif make_key == "agco-allis":
-        res = decode_agco(serial_clean, make_name="AGCO Allis", make_key="agco-allis", range_match=range_match)
+        res = decode_agco(serial_clean, make_name="AGCO Allis", make_key="agco-allis", range_match=range_match, wmc_info=wmc_info, pre_resolved=pre_resolved)
     elif make_key == "agco-white":
-        res = decode_agco(serial_clean, make_name="AGCO White", make_key="agco-white", range_match=range_match)
+        res = decode_agco(serial_clean, make_name="AGCO White", make_key="agco-white", range_match=range_match, wmc_info=wmc_info, pre_resolved=pre_resolved)
     elif make_key == "agco":
-        res = decode_agco(serial_clean, make_name="AGCO", make_key="agco", range_match=range_match)
+        res = decode_agco(serial_clean, make_name="AGCO", make_key="agco", range_match=range_match, wmc_info=wmc_info, pre_resolved=pre_resolved)
     elif make_key == "fendt":
-        res = decode_fendt(serial_clean, range_match)
+        res = decode_fendt(serial_clean, range_match, wmc_info=wmc_info, pre_resolved=pre_resolved)
     elif make_key == "challenger":
-        res = decode_challenger(serial_clean, range_match)
+        res = decode_challenger(serial_clean, range_match, wmc_info=wmc_info, pre_resolved=pre_resolved)
     elif make_key == "claas":
-        res = decode_claas(serial_clean, range_match)
+        res = decode_claas(serial_clean, range_match, wmc_info=wmc_info, pre_resolved=pre_resolved)
     elif make_key == "kubota":
-        res = decode_kubota(serial_clean, range_match)
+        res = decode_kubota(serial_clean, range_match, wmc_info=wmc_info, pre_resolved=pre_resolved)
     else:
         # Complete fallback
         res = {
@@ -1345,8 +1434,11 @@ def decode_serial(serial):
         
     # Fetch Pricing & Valuation Context
     if res["model"] != "Unknown":
-        model_key = f"{res['make_key']}-{res['model'].lower().replace(' ', '')}"
-        res["similar_sales"] = fetch_similar_sales(model_key, limit=5)
+        if pre_resolved:
+            res["similar_sales"] = similar_sales if similar_sales is not None else []
+        else:
+            model_key = f"{res['make_key']}-{res['model'].lower().replace(' ', '')}"
+            res["similar_sales"] = fetch_similar_sales(model_key, limit=5)
     else:
         res["similar_sales"] = []
         

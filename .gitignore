@@ -23,3 +23,7 @@ Thumbs.db
 
 # Cloudflare temp
 cloudflare_tunnel_details.json
+
+# Local Databases & SQL Dumps
+*.db
+d1_migration.sql
