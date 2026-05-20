@@ -57,9 +57,10 @@ CNH_PLANT_MAP = {
 }
 
 def get_db_connection():
-    if not DATABASE_URL:
-        raise ValueError("DATABASE_URL not found in environment.")
-    return psycopg2.connect(DATABASE_URL)
+    db_url = DATABASE_URL or RENDER_DATABASE_URL
+    if not db_url:
+        raise ValueError("Neither DATABASE_URL nor RENDER_DATABASE_URL found in environment.")
+    return psycopg2.connect(db_url)
 
 def get_remote_db_connection():
     if not RENDER_DATABASE_URL:
