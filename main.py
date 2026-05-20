@@ -3,8 +3,53 @@ import json
 from workers import WorkerEntrypoint, Response
 from parser import decode_serial, normalize_cat_serial
 
+def get_field(row, field, default=None):
+    """
+    Bulletproof helper to extract fields from database rows,
+    supporting dictionaries, JS proxy objects, and object attributes safely.
+    """
+    if row is None:
+        return default
+    # 1. Try dict/item access
+    try:
+        val = row[field]
+        if val is not None:
+            # Handle Pyodide/JS string objects by converting to standard python strings
+            return str(val) if isinstance(val, (str, int, float)) else val
+    except Exception:
+        pass
+    # 2. Try attribute access
+    try:
+        val = getattr(row, field, None)
+        if val is not None:
+            return str(val) if isinstance(val, (str, int, float)) else val
+    except Exception:
+        pass
+    return default
+
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
+        try:
+            return await self._handle_fetch(request)
+        except Exception as e:
+            import traceback
+            error_details = {
+                "error": "Unhandled Exception in Worker",
+                "message": str(e),
+                "traceback": traceback.format_exc()
+            }
+            return Response(
+                json.dumps(error_details),
+                status=500,
+                headers={
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                    "Access-Control-Allow-Headers": "Content-Type"
+                }
+            )
+
+    async def _handle_fetch(self, request):
         # Handle CORS preflight options request
         if request.method == "OPTIONS":
             return Response(
@@ -62,16 +107,14 @@ class Default(WorkerEntrypoint):
                 wmc_stmt = db.prepare("SELECT wmc_code, company, country_code, make_key FROM wmc_codes WHERE wmc_code = ? LIMIT 1")
                 wmc_res = await wmc_stmt.bind(wmc_code).first()
                 if wmc_res:
-                    # In python workers, results are accessable as attributes or dicts
-                    # We will support both safely
-                    r_company = getattr(wmc_res, "company", None) or wmc_res.get("company")
-                    r_country = getattr(wmc_res, "country_code", None) or wmc_res.get("country_code")
-                    r_make = getattr(wmc_res, "make_key", None) or wmc_res.get("make_key")
+                    r_company = get_field(wmc_res, "company", "Unknown")
+                    r_country = get_field(wmc_res, "country_code", "Unknown")
+                    r_make = get_field(wmc_res, "make_key", "unknown")
                     
                     wmc_info = {
-                        "company": r_company.strip() if r_company else "Unknown",
-                        "country": r_country.strip() if r_country else "Unknown",
-                        "make_key": r_make.strip() if r_make else "unknown"
+                        "company": r_company.strip(),
+                        "country": r_country.strip(),
+                        "make_key": r_make.strip()
                     }
             except Exception as e:
                 print(f"Error executing WMC lookup in Worker: {e}")
@@ -98,23 +141,27 @@ class Default(WorkerEntrypoint):
                     cat_res = await cat_stmt.bind("caterpillar%", f"%{input_prefix}%", f"{input_prefix}%").all()
                     
                     best_cat = None
-                    for r in cat_res.results:
-                        r_key = getattr(r, "make_model_key", None) or r.get("make_model_key")
-                        r_year = getattr(r, "year", None) or r.get("year")
-                        r_start = getattr(r, "serial_start", None) or r.get("serial_start")
-                        r_conf = getattr(r, "confidence", None) or r.get("confidence")
-                        
-                        r_prefix, r_seq = normalize_cat_serial(r_start)
-                        if r_prefix == input_prefix:
-                            if input_seq >= r_seq:
-                                if best_cat is None or r_seq > best_cat["r_seq"]:
-                                    best_cat = {
-                                        "make_model_key": r_key,
-                                        "year": r_year,
-                                        "serial_start": r_start,
-                                        "confidence": r_conf,
-                                        "r_seq": r_seq
-                                    }
+                    if cat_res and cat_res.results:
+                        for r in cat_res.results:
+                            r_key = get_field(r, "make_model_key")
+                            r_year = get_field(r, "year")
+                            r_start = get_field(r, "serial_start")
+                            r_conf = get_field(r, "confidence")
+                            
+                            if not r_start:
+                                continue
+                                
+                            r_prefix, r_seq = normalize_cat_serial(r_start)
+                            if r_prefix == input_prefix:
+                                if input_seq >= r_seq:
+                                    if best_cat is None or r_seq > best_cat["r_seq"]:
+                                        best_cat = {
+                                            "make_model_key": r_key,
+                                            "year": int(r_year) if r_year else None,
+                                            "serial_start": r_start,
+                                            "confidence": r_conf,
+                                            "r_seq": r_seq
+                                        }
                     if best_cat:
                         best_match = {
                             "make_model_key": best_cat["make_model_key"],
@@ -165,22 +212,23 @@ class Default(WorkerEntrypoint):
                     """)
                     range_res = await range_stmt.bind(f"{prefix}%").all()
                     
-                for r in range_res.results:
-                    r_key = getattr(r, "make_model_key", None) or r.get("make_model_key")
-                    r_year = getattr(r, "year", None) or r.get("year")
-                    r_start = getattr(r, "serial_start", None) or r.get("serial_start")
-                    r_conf = getattr(r, "confidence", None) or r.get("confidence")
-                    
-                    if not r_start:
-                        continue
-                    clean_start = r_start.strip().upper()
-                    if serial_clean >= clean_start:
-                        best_match = {
-                            "make_model_key": r_key,
-                            "year": r_year,
-                            "serial_start": r_start,
-                            "confidence": r_conf
-                        }
+                if range_res and range_res.results:
+                    for r in range_res.results:
+                        r_key = get_field(r, "make_model_key")
+                        r_year = get_field(r, "year")
+                        r_start = get_field(r, "serial_start")
+                        r_conf = get_field(r, "confidence")
+                        
+                        if not r_start:
+                            continue
+                        clean_start = r_start.strip().upper()
+                        if serial_clean >= clean_start:
+                            best_match = {
+                                "make_model_key": r_key,
+                                "year": int(r_year) if r_year else None,
+                                "serial_start": r_start,
+                                "confidence": r_conf
+                            }
             except Exception as e:
                 print(f"Error in general D1 range lookup: {e}")
 
@@ -208,11 +256,12 @@ class Default(WorkerEntrypoint):
                 for tk in translated_keys:
                     jd_stmt = db.prepare("SELECT year, serial_start, confidence FROM serial_number_ranges WHERE make_model_key = ? ORDER BY serial_start")
                     jd_res = await jd_stmt.bind(tk).all()
-                    for r in jd_res.results:
-                        r_yr = getattr(r, "year", None) or r.get("year")
-                        r_start = getattr(r, "serial_start", None) or r.get("serial_start")
-                        r_conf = getattr(r, "confidence", None) or r.get("confidence")
-                        jd_seq_ranges.append((r_yr, r_start, r_conf))
+                    if jd_res and jd_res.results:
+                        for r in jd_res.results:
+                            r_yr = get_field(r, "year")
+                            r_start = get_field(r, "serial_start")
+                            r_conf = get_field(r, "confidence")
+                            jd_seq_ranges.append((int(r_yr) if r_yr else None, r_start, r_conf))
             except Exception as e:
                 print(f"Error pre-fetching John Deere sequence ranges: {e}")
 
@@ -240,22 +289,23 @@ class Default(WorkerEntrypoint):
                     LIMIT 5;
                 """)
                 sales_res = await sales_stmt.bind(model_key).all()
-                for s in sales_res.results:
-                    s_yr = getattr(s, "year", None) or s.get("year")
-                    s_ser = getattr(s, "serial_number", None) or s.get("serial_number")
-                    s_pr = getattr(s, "price", None) or s.get("price")
-                    s_dt = getattr(s, "sold_date", None) or s.get("sold_date")
-                    s_st = getattr(s, "state_code", None) or s.get("state_code")
-                    s_auc = getattr(s, "raw_auctioneer", None) or s.get("raw_auctioneer")
-                    
-                    similar_sales.append({
-                        "year": s_yr,
-                        "serial": s_ser,
-                        "price": int(s_pr) if s_pr is not None else None,
-                        "sold_date": str(s_dt) if s_dt else "Unknown",
-                        "state": s_st if s_st else "Unknown",
-                        "auctioneer": s_auc if s_auc else "Unknown"
-                    })
+                if sales_res and sales_res.results:
+                    for s in sales_res.results:
+                        s_yr = get_field(s, "year")
+                        s_ser = get_field(s, "serial_number")
+                        s_pr = get_field(s, "price")
+                        s_dt = get_field(s, "sold_date", "Unknown")
+                        s_st = get_field(s, "state_code", "Unknown")
+                        s_auc = get_field(s, "raw_auctioneer", "Unknown")
+                        
+                        similar_sales.append({
+                            "year": int(s_yr) if s_yr else None,
+                            "serial": s_ser,
+                            "price": int(s_pr) if s_pr is not None else None,
+                            "sold_date": s_dt,
+                            "state": s_st,
+                            "auctioneer": s_auc
+                        })
             except Exception as e:
                 print(f"Error fetching similar sales from D1: {e}")
 
