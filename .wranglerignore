@@ -48,4 +48,3 @@ configure_dns.py
 ocr_*.swift
 search_pdf.swift
 requirements-local.txt
-static/

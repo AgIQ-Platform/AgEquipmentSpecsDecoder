@@ -86,9 +86,47 @@ class Default(WorkerEntrypoint):
                 }
             )
 
+        url = request.url
+
+        # Static asset serving
+        if "/static/index.css" in url:
+            try:
+                import os
+                css_path = "static/index.css"
+                if not os.path.exists(css_path):
+                    css_path = "session/metadata/static/index.css"
+                with open(css_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                return Response(
+                    content,
+                    headers={
+                        "Content-Type": "text/css",
+                        "Access-Control-Allow-Origin": "*"
+                    }
+                )
+            except Exception as e:
+                return Response(f"Error loading CSS: {e}", status=500)
+                
+        elif "/static/app.js" in url:
+            try:
+                import os
+                js_path = "static/app.js"
+                if not os.path.exists(js_path):
+                    js_path = "session/metadata/static/app.js"
+                with open(js_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                return Response(
+                    content,
+                    headers={
+                        "Content-Type": "application/javascript",
+                        "Access-Control-Allow-Origin": "*"
+                    }
+                )
+            except Exception as e:
+                return Response(f"Error loading JS: {e}", status=500)
+
         # Parse request inputs
         serial = None
-        url = request.url
         
         # 1. Parse GET query parameters
         if "?" in url:
@@ -108,6 +146,26 @@ class Default(WorkerEntrypoint):
                     serial = body.get("serial")
             except Exception:
                 pass
+
+        # If not decoding, serve the frontend HTML dashboard
+        if not serial and "/api/decode" not in url:
+            try:
+                import os
+                html_path = "static/index.html"
+                if not os.path.exists(html_path):
+                    html_path = "session/metadata/static/index.html"
+                    
+                with open(html_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                return Response(
+                    content,
+                    headers={
+                        "Content-Type": "text/html",
+                        "Access-Control-Allow-Origin": "*"
+                    }
+                )
+            except Exception as e:
+                return Response(f"Error loading HTML dashboard: {e}", status=500)
 
         if not serial:
             return Response(

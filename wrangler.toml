@@ -14,7 +14,6 @@ excludes = [
   "Book1.pdf",
   "Book2.pdf",
   "d1_migration.zip",
-  "static/**",
   "configure_dns.py",
   "setup_cloudflare.py",
   "generate_d1_db.py",
